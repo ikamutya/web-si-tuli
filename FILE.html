@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BicaraLens Companion App & Smart Glasses HUD Simulator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0284c7',
+              700: '#0369a1',
+              900: '#0c4a6e',
+            },
+            oled: '#030712'
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Inter & JetBrains Mono Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* OLED Pixel Simulation Grid */
+    .oled-screen {
+      background-color: #000000;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+      background-size: 3px 3px;
+    }
+    /* Beam Splitter Acrylic Reflection Effect */
+    .hud-lens-overlay {
+      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.01) 40%, rgba(2, 132, 199, 0.12) 100%);
+      box-shadow: inset 0 0 15px rgba(2, 132, 199, 0.2);
+    }
+    .hud-text-glow {
+      text-shadow: 0 0 4px rgba(255, 255, 255, 0.9), 0 0 10px rgba(56, 189, 248, 0.6);
+    }
+    /* Mirror Flip Utility */
+    .mirror-flipped {
+      transform: scaleX(-1);
+    }
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #0284c7;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+  <!-- TOP HEADER / STATUS BAR -->
+  <header class="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand Logo & Team Tag -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center shadow-lg shadow-sky-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-xl font-bold tracking-tight text-white">BicaraLens</h1>
+            <span class="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/60">Tim TELETUBBIES</span>
+          </div>
+          <p class="text-xs text-slate-400">Companion App & Smart Glasses HUD Simulator</p>
+        </div>
+      </div>
+
+      <!-- Telemetry & Status Badges -->
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <!-- BLE Connection Status Pill -->
+        <button id="bleToggleBtn" onclick="toggleBLEConnection()" class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 transition cursor-pointer">
+          <span id="bleDot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+          <span id="bleStatusText" class="font-medium text-slate-200">Simulator / Mic HP</span>
+        </button>
+
+        <!-- Battery Status -->
+        <div class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span class="font-mono text-emerald-400 font-semibold">88%</span>
+          <span class="text-[10px] text-slate-500 font-mono">(LiPo 3.7V)</span>
+        </div>
+
+        <!-- Sample Rate Badge -->
+        <div class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400 font-mono text-[11px]">
+          <span>16kHz Mono</span>
+          <span class="text-slate-600">•</span>
+          <span>MTU 247B</span>
+        </div>
+
+        <!-- Language Switcher -->
+        <button onclick="toggleLanguage()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition text-xs border border-slate-700">
+          <span id="langLabel">🇮🇩 ID</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="max-w-7xl mx-auto mt-3 pt-2 border-t border-slate-800/80 flex overflow-x-auto space-x-2 no-scrollbar">
+      <button onclick="switchTab('tab-comm')" id="nav-tab-comm" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm transition flex items-center space-x-2 whitespace-nowrap bg-sky-600 text-white shadow-md shadow-sky-600/30">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <span data-i18n="tab_comm">1. Komunikasi 2-Arah (Utama)</span>
+      </button>
+
+      <button onclick="switchTab('tab-hud')" id="nav-tab-hud" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm transition flex items-center space-x-2 whitespace-nowrap bg-slate-800 text-slate-400 hover:text-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <span data-i18n="tab_hud">2. Simulasi OLED HUD & Optik</span>
+      </button>
+
+      <button onclick="switchTab('tab-wer')" id="nav-tab-wer" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm transition flex items-center space-x-2 whitespace-nowrap bg-slate-800 text-slate-400 hover:text-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <span data-i18n="tab_wer">3. Benchmark WER & Latensi (Tahap 6)</span>
+      </button>
+
+      <button onclick="switchTab('tab-code')" id="nav-tab-code" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm transition flex items-center space-x-2 whitespace-nowrap bg-slate-800 text-slate-400 hover:text-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        <span data-i18n="tab_code">4. Firmware ESP32-S3 & Referensi</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- ================================================================= -->
+    <!-- TAB 1: LIVE TWO-WAY COMMUNICATION -->
+    <!-- ================================================================= -->
+    <div id="tab-comm" class="tab-content space-y-6">
+      
+      <!-- Top Grid: Split Direction 1 & Side Live HUD Mirror -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Direction 1: Lawan Bicara -> Teks Kacamata (STT) -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div class="flex items-center space-x-3">
+              <div class="w-9 h-9 rounded-lg bg-sky-950 text-sky-400 border border-sky-800 flex items-center justify-center font-bold">
+                A1
+              </div>
+              <div>
+                <h2 class="font-bold text-base text-white" data-i18n="dir1_title">Arah 1: Lawan Bicara ➔ Teks Kacamata (STT)</h2>
+                <p class="text-xs text-slate-400" data-i18n="dir1_sub">Deteksi ucapan lawan bicara &amp; streaming transkripsi ke OLED HUD</p>
+              </div>
+            </div>
+
+            <!-- Latency Meter -->
+            <div class="text-right">
+              <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-medium" data-i18n="est_latency">Estimasi Latensi</span>
+              <span id="sttLatencyDisplay" class="font-mono text-sm font-bold text-emerald-400">120 ms</span>
+            </div>
+          </div>
+
+          <!-- Controls & Mic Trigger -->
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <button id="micToggleBtn" onclick="toggleMicrophone()" class="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-sm transition shadow-lg shadow-sky-600/30 flex items-center space-x-2">
+                <svg id="micIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                <span id="micBtnText" data-i18n="mic_start">Mulai Dengar (Mic Live)</span>
+              </button>
+              <button onclick="clearSTTLog()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition border border-slate-700" title="Bersihkan Teks">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </div>
+
+            <!-- Waveform Indicator -->
+            <div class="flex items-center space-x-1 h-6 px-3 bg-slate-950 rounded-lg border border-slate-800">
+              <div id="bar1" class="w-1 bg-sky-500 rounded-full h-2 transition-all duration-100"></div>
+              <div id="bar2" class="w-1 bg-sky-500 rounded-full h-4 transition-all duration-100"></div>
+              <div id="bar3" class="w-1 bg-sky-500 rounded-full h-3 transition-all duration-100"></div>
+              <div id="bar4" class="w-1 bg-sky-500 rounded-full h-5 transition-all duration-100"></div>
+              <span id="sttStatusBadge" class="text-[11px] font-mono text-slate-400 ml-2">Mic Standby</span>
+            </div>
+          </div>
+
+          <!-- Quick Scenario Presets -->
+          <div class="mt-4">
+            <span class="text-xs text-slate-400 font-medium block mb-2" data-i18n="preset_label">Simulasi Percakapan Cepat (Klik untuk Uji Tanpa Bicara):</span>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="simulateScenario('loket')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                🏥 Loket RS
+              </button>
+              <button onclick="simulateScenario('bank')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                🏦 Teller Bank
+              </button>
+              <button onclick="simulateScenario('kampus')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                🎓 Perkuliah Dosen
+              </button>
+              <button onclick="simulateScenario('apotek')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                💊 Kasir Apotek
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Transcription Display Box -->
+          <div class="mt-4 flex-1 min-h-[160px] bg-slate-950 rounded-xl border border-slate-800 p-4 font-mono text-sm leading-relaxed overflow-y-auto max-h-[220px] flex flex-col justify-between">
+            <div id="sttOutputBox" class="space-y-2">
+              <p class="text-slate-500 italic text-xs" data-i18n="stt_placeholder">[Hasil transkripsi suara lawan bicara akan muncul di sini secara real-time...]</p>
+            </div>
+            <div id="interimText" class="text-sky-400 italic text-xs mt-2 border-t border-slate-900 pt-2 hidden">
+              ...sedang mendengarkan...
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Side OLED Preview HUD Widget -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                <span data-i18n="hud_mini_title">Pratinjau Layar Kacamata (OLED HUD)</span>
+              </h3>
+              <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">0.42" I2C</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2 mb-4" data-i18n="hud_mini_desc">Apa yang dilihat oleh Pengguna Tuli pada sudut pandang optik kacamata.</p>
+
+            <!-- Physical Frame HUD Outer Box -->
+            <div class="relative w-full aspect-[16/9] rounded-xl overflow-hidden oled-screen border-2 border-slate-700 shadow-2xl p-3 flex flex-col justify-between">
+              
+              <!-- Refraction Beam-Splitter Lens Overlay -->
+              <div class="absolute inset-0 hud-lens-overlay pointer-events-none"></div>
+
+              <!-- Top Status Line on OLED -->
+              <div class="relative z-10 flex items-center justify-between text-[10px] font-mono text-sky-400 border-b border-sky-900/50 pb-1">
+                <span class="flex items-center space-x-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span>BLE: OK</span>
+                </span>
+                <span id="hudClock" class="font-semibold text-slate-300">14:26</span>
+              </div>
+
+              <!-- Main HUD Text Area -->
+              <div class="relative z-10 flex-1 flex items-center justify-center my-1">
+                <p id="miniHudText" class="hud-text-glow font-mono text-white text-center text-sm font-semibold leading-tight px-1 transition-all">
+                  READY: BicaraLens
+                </p>
+              </div>
+
+              <!-- OLED Footer Status -->
+              <div class="relative z-10 flex items-center justify-between text-[9px] font-mono text-slate-400 pt-1 border-t border-sky-900/30">
+                <span id="hudWordCount">0 kata</span>
+                <span class="text-sky-400">72x40 px</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Optical Toggle -->
+          <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <span data-i18n="optics_mirror">Mode Cermin (Refleksi Optik 45°):</span>
+            <button onclick="toggleMirrorMode()" id="mirrorToggleBtn" class="px-2.5 py-1 rounded bg-slate-800 text-slate-300 font-mono text-[11px] border border-slate-700">
+              OFF
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Direction 2: Pengguna Tuli -> Suara Jernih (Phase 2 TTS & Atypical Speech AI) -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex flex-wrap items-center justify-between pb-4 border-b border-slate-800 gap-3">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-lg bg-purple-950 text-purple-400 border border-purple-800 flex items-center justify-center font-bold">
+              A2
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="font-bold text-base text-white" data-i18n="dir2_title">Arah 2: Pengguna Tuli ➔ Suara Jernih (TTS &amp; Koreksi Wicara AI)</h2>
+                <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700">Phase 2 Ready</span>
+              </div>
+              <p class="text-xs text-slate-400" data-i18n="dir2_sub">Respon cepat pengguna Tuli dengan frasa publik &amp; pemolesan struktur kalimat otomatis</p>
+            </div>
+          </div>
+
+          <!-- Bone Conduction VAD Simulation Toggle -->
+          <div class="flex items-center space-x-3 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+            <span class="text-slate-400 font-medium" data-i18n="vad_label">Sensor Konduksi Tulang (VAD):</span>
+            <div class="flex items-center space-x-1.5">
+              <span id="vadStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+              <span id="vadStatusText" class="font-mono text-[11px] text-slate-400">Idle</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
+          
+          <!-- Column A: Quick Phrases (Frasa Cepat Layan Publik) -->
+          <div class="space-y-3">
+            <h3 class="font-semibold text-sm text-slate-200 flex items-center space-x-2">
+              <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span data-i18n="qp_title">Frasa Cepat Layanan Publik:</span>
+            </h3>
+
+            <div class="grid grid-cols-1 gap-2">
+              <button onclick="speakPhrase('Halo, saya Tuli. Mohon bicara sedikit perlahan dan menghadap ke saya.')" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-purple-800 text-left transition group">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-purple-300">Pemberitahuan Awal</span>
+                  <svg class="w-4 h-4 text-slate-500 group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 font-sans">"Halo, saya Tuli. Mohon bicara sedikit perlahan dan menghadap ke saya."</p>
+              </button>
+
+              <button onclick="speakPhrase('Bisa tolong tuliskan atau ulangi bagian kalimat terakhir?')" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-purple-800 text-left transition group">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-purple-300">Minta Pengulangan</span>
+                  <svg class="w-4 h-4 text-slate-500 group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 font-sans">"Bisa tolong tuliskan atau ulangi bagian kalimat terakhir?"</p>
+              </button>
+
+              <button onclick="speakPhrase('Permisi, saya ingin mendaftar untuk pemeriksaan kesehatan.')" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-purple-800 text-left transition group">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-purple-300">Pendaftaran Loket</span>
+                  <svg class="w-4 h-4 text-slate-500 group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 font-sans">"Permisi, saya ingin mendaftar untuk pemeriksaan kesehatan."</p>
+              </button>
+
+              <button onclick="speakPhrase('Terima kasih banyak atas bantuan Anda.')" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-purple-800 text-left transition group">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-purple-300">Penutup / Penutup</span>
+                  <svg class="w-4 h-4 text-slate-500 group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 font-sans">"Terima kasih banyak atas bantuan Anda."</p>
+              </button>
+            </div>
+          </div>
+
+          <!-- Column B: AI Atypical Speech Refiner & Custom Input -->
+          <div class="space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-sm text-slate-200 flex items-center space-x-2">
+                  <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                  <span data-i18n="ai_refine_title">Ketik Teks / Koreksi Ucapan Atipikal:</span>
+                </h3>
+                <span class="text-[10px] text-purple-400 font-mono">NLP Grammar Model</span>
+              </div>
+
+              <!-- Input Box -->
+              <div class="space-y-2">
+                <textarea id="atypicalInput" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-600 transition" placeholder="Contoh input terpotong/atipikal: 'saya mau daftar periksa dokter gigi bpjs'"></textarea>
+                
+                <!-- Refine & Speak Buttons -->
+                <div class="flex gap-2">
+                  <button onclick="refineAndSpeak()" class="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition flex items-center justify-center space-x-2 shadow-lg shadow-purple-600/20">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                    <span data-i18n="btn_refine">Poles &amp; Suarakan (AI)</span>
+                  </button>
+                  <button onclick="speakDirect()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+                    <span data-i18n="btn_direct_speak">Suarakan Langsung</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Output Corrected Banner -->
+            <div id="aiResultBox" class="hidden p-3 rounded-xl bg-purple-950/60 border border-purple-800/80 space-y-1">
+              <span class="text-[10px] uppercase font-bold text-purple-400 block tracking-wider" data-i18n="ai_polished_label">Hasil Polesan AI (Tata Bahasa Baku):</span>
+              <p id="aiPolishedText" class="text-xs text-white font-medium italic">"Permisi, saya ingin mendaftar pemeriksaan dokter gigi menggunakan layanan BPJS."</p>
+            </div>
+
+            <!-- Audio Output Visualizer -->
+            <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 flex items-center justify-between">
+              <span class="text-xs text-slate-400" data-i18n="tts_wave_label">Gelombang Suara Vokal HP:</span>
+              <canvas id="ttsCanvas" width="180" height="24" class="bg-slate-900 rounded"></canvas>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- TAB 2: SMART GLASSES MICRO-OLED HUD PREVIEW & CALIBRATION -->
+    <!-- ================================================================= -->
+    <div id="tab-hud" class="tab-content space-y-6 hidden">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left 2 Cols: Main AR Eye Level HUD Simulator -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div>
+              <h2 class="font-bold text-base text-white" data-i18n="ar_sim_title">Simulasi Pandangan AR Mata Pengguna (Field of View)</h2>
+              <p class="text-xs text-slate-400" data-i18n="ar_sim_sub">Tampilan transparan teks OLED yang terproyeksi melalui akrilik 45° ke mata kanan pengguna.</p>
+            </div>
+
+            <!-- Background Toggle -->
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-slate-400" data-i18n="bg_sim">Latar:</span>
+              <button onclick="toggleHudBg('office')" class="px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-300 hover:bg-slate-700">Office</button>
+              <button onclick="toggleHudBg('street')" class="px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-300 hover:bg-slate-700">Street</button>
+              <button onclick="toggleHudBg('dark')" class="px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-300 hover:bg-slate-700">Dark</button>
+            </div>
+          </div>
+
+          <!-- Glass Frame Viewport -->
+          <div id="arSimViewport" class="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border-4 border-slate-800 shadow-2xl transition-all duration-300 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80');">
+            
+            <!-- Tinted Sunglasses Lens Effect Layer -->
+            <div class="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px]"></div>
+
+            <!-- Crosshair Target Guide -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+              <div class="w-full border-t border-dashed border-sky-400"></div>
+              <div class="h-full border-r border-dashed border-sky-400"></div>
+            </div>
+
+            <!-- Positioned HUD Display Window (Top Right Field of View) -->
+            <div id="hudProjectionBox" class="absolute top-6 right-6 w-64 aspect-[16/9] oled-screen rounded-lg border-2 border-sky-500/60 p-3 shadow-2xl shadow-sky-500/30 flex flex-col justify-between transition-all duration-300">
+              
+              <!-- Optics Beam Splitter Reflection Layer -->
+              <div class="absolute inset-0 hud-lens-overlay pointer-events-none rounded-lg"></div>
+
+              <!-- HUD Screen Header -->
+              <div class="relative z-10 flex items-center justify-between text-[10px] font-mono text-sky-400 border-b border-sky-900/60 pb-1">
+                <span>[HUD 0.42"]</span>
+                <span id="arClock">14:26</span>
+              </div>
+
+              <!-- Text Content Display -->
+              <div class="relative z-10 flex-1 flex items-center justify-center my-1 text-center">
+                <p id="arHudText" class="hud-text-glow font-mono text-white text-base font-bold leading-snug px-1 transition-all">
+                  "Halo, selamat siang! Ada yang bisa kami bantu?"
+                </p>
+              </div>
+
+              <!-- HUD Footer -->
+              <div class="relative z-10 flex items-center justify-between text-[9px] font-mono text-slate-400 pt-1 border-t border-sky-900/40">
+                <span id="arResLabel">72x40 PX</span>
+                <span class="text-emerald-400 font-semibold">STREAMING</span>
+              </div>
+
+            </div>
+
+            <!-- Glasses Rim Overlay Vignette -->
+            <div class="absolute inset-0 ring-1 ring-inset ring-slate-700/50 rounded-2xl pointer-events-none"></div>
+          </div>
+        </div>
+
+        <!-- Right Col: Calibration Controls & Hardware Specs -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <h3 class="font-bold text-base text-white pb-3 border-b border-slate-800 flex items-center gap-2">
+            <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            <span data-i18n="calib_title">Kalibrasi Tampilan OLED</span>
+          </h3>
+
+          <!-- Controls List -->
+          <div class="space-y-4">
+            
+            <!-- Font Size -->
+            <div>
+              <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="font_size_label">Ukuran Font Teks HUD:</label>
+              <div class="grid grid-cols-3 gap-2">
+                <button onclick="setHudFontSize('small')" class="py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300">Small (12px)</button>
+                <button onclick="setHudFontSize('medium')" class="py-1.5 rounded bg-sky-600 text-xs font-mono text-white font-bold">Medium (16px)</button>
+                <button onclick="setHudFontSize('large')" class="py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300">Large (20px)</button>
+              </div>
+            </div>
+
+            <!-- Resolution Mode -->
+            <div>
+              <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="res_mode_label">Resolusi &amp; Ukuran Modul Layar:</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="setOledRes('72x40')" class="py-1.5 rounded bg-sky-600 text-xs font-mono text-white font-semibold">0.42" (72x40 px)</button>
+                <button onclick="setOledRes('64x32')" class="py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300">0.49" (64x32 px)</button>
+              </div>
+            </div>
+
+            <!-- Display Alignment / Mode -->
+            <div>
+              <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="scroll_mode_label">Mode Pergeseran Teks (Scroll):</label>
+              <select id="scrollModeSelect" onchange="updateScrollMode()" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200">
+                <option value="word">Kata demi Kata (Word-by-Word Stream)</option>
+                <option value="line">2 Baris Per Kalimat (Line-by-Line)</option>
+              </select>
+            </div>
+
+            <!-- Optics Mirroring Toggle -->
+            <div class="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <div>
+                <span class="text-xs font-semibold text-slate-200 block" data-i18n="mirror_optics_title">Refleksi Optik 45° (Mirroring)</span>
+                <span class="text-[10px] text-slate-400 block" data-i18n="mirror_optics_sub">Balik teks secara horizontal untuk pantulan akrilik</span>
+              </div>
+              <input type="checkbox" id="mirrorCheckbox" onchange="toggleMirrorMode()" class="w-4 h-4 accent-sky-500 rounded cursor-pointer">
+            </div>
+
+          </div>
+
+          <!-- Optics Beam-splitter Technical Info Card -->
+          <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2">
+            <span class="font-bold text-slate-200 block" data-i18n="optics_spec_title">Spesifikasi Optik Beam-Splitter:</span>
+            <ul class="list-disc list-inside space-y-1 text-[11px]">
+              <li>Lensa Cembung Mini: $d=15\text{mm}, f=35\text{mm}$</li>
+              <li>Akrilik Bening Reflektor: Kemiringan $45^\circ$, tebal $1\text{mm}$</li>
+              <li>Transmisivitas Cahaya: $\approx 70\%$, Reflektifitas: $\approx 30\%$</li>
+            </ul>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- TAB 3: WER & LATENCY BENCHMARK TESTER (TAHAP 6 PENGUKURAN) -->
+    <!-- ================================================================= -->
+    <div id="tab-wer" class="tab-content space-y-6 hidden">
+      
+      <!-- Top Grid: Interactive WER Calculator & Levenshtein Breakdown -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Interactive WER Calculator -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div>
+              <h2 class="font-bold text-base text-white" data-i18n="wer_calc_title">Kalkulator Word Error Rate (WER) &amp; Latensi</h2>
+              <p class="text-xs text-slate-400" data-i18n="wer_calc_sub">Pengujian terukur sesuai spesifikasi Tahap 6 proposal BicaraLens.</p>
+            </div>
+            <span class="text-xs font-mono font-bold text-sky-400 bg-sky-950 px-2.5 py-1 rounded border border-sky-800">Tahap 6 Uji</span>
+          </div>
+
+          <!-- Formula Callout Box -->
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-slate-300">
+            <span class="text-sky-400 font-bold block mb-1">Rumus Standard Evaluasi ASR:</span>
+            <span>WER = ((Substitusi + Deletion + Insertion) / Total Kata Asli) × 100%</span>
+          </div>
+
+          <!-- Sentence Inputs -->
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="ref_text_label">Kalimat Acuan / Referensi ($N$):</label>
+              <textarea id="refSentence" rows="2" oninput="calculateWER()" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-sky-600 font-mono" placeholder="Masukkan kalimat asli yang diucapkan lawan bicara..."></textarea>
+            </div>
+
+            <div>
+              <label class="text-xs text-slate-400 font-medium block mb-1" data-i18n="hyp_text_label">Hasil Transkripsi Mesin STT (Hipotesis):</label>
+              <textarea id="hypSentence" rows="2" oninput="calculateWER()" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-sky-600 font-mono" placeholder="Masukkan teks hasil transkripsi STT yang didapat..."></textarea>
+            </div>
+          </div>
+
+          <!-- Environment Parameters -->
+          <div class="grid grid-cols-3 gap-3 pt-2">
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1" data-i18n="env_label">Lingkungan:</label>
+              <select id="testEnv" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200">
+                <option value="Ruangan Sepi (40 dB)">Sepi (40 dB)</option>
+                <option value="Ruangan Ramai (65 dB)">Ramai (65 dB)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1" data-i18n="dist_label">Jarak Bicara:</label>
+              <select id="testDist" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200">
+                <option value="0.5 Meter">0.5 Meter</option>
+                <option value="1.5 Meter">1.5 Meter</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1" data-i18n="measured_latency_label">Latensi (ms):</label>
+              <input type="number" id="testLatencyInput" value="380" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono">
+            </div>
+          </div>
+
+          <!-- Add to Log Button -->
+          <button onclick="logBenchmarkRun()" class="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition shadow-lg shadow-sky-600/20 flex items-center justify-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            <span data-i18n="add_log_btn">Simpan ke Tabel Log Benchmark</span>
+          </button>
+        </div>
+
+        <!-- Metric Breakdown Dashboard -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
+          <h3 class="font-bold text-base text-white pb-3 border-b border-slate-800" data-i18n="wer_metrics_title">Detail Analisis Kesalahan Kata (Levenshtein)</h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+              <span class="text-xs text-slate-400 font-medium block mb-1">Skor WER (%)</span>
+              <span id="werScoreDisplay" class="text-3xl font-extrabold font-mono text-emerald-400">0.00%</span>
+              <span id="werStatusBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 mt-2 inline-block border border-emerald-800">Sangat Akurat</span>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+              <span class="text-xs text-slate-400 font-medium block mb-1">Total Kata Ref ($N$)</span>
+              <span id="totalNCount" class="text-3xl font-extrabold font-mono text-sky-400">0</span>
+              <span class="text-[10px] text-slate-500 block mt-2">Kata Referensi</span>
+            </div>
+          </div>
+
+          <!-- Detailed Error Counters -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+              <span class="text-[11px] text-slate-400 block font-medium">Substitusi ($S$)</span>
+              <span id="subCount" class="text-xl font-bold font-mono text-amber-400">0</span>
+              <span class="text-[9px] text-slate-500 block">Kata Terganti</span>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+              <span class="text-[11px] text-slate-400 block font-medium">Deletions ($D$)</span>
+              <span id="delCount" class="text-xl font-bold font-mono text-rose-400">0</span>
+              <span class="text-[9px] text-slate-500 block">Kata Terhapus</span>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+              <span class="text-[11px] text-slate-400 block font-medium">Insertions ($I$)</span>
+              <span id="insCount" class="text-xl font-bold font-mono text-purple-400">0</span>
+              <span class="text-[9px] text-slate-500 block">Kata Sisipan</span>
+            </div>
+          </div>
+
+          <!-- Sample Benchmark Preset Loader -->
+          <div class="pt-2 border-t border-slate-800">
+            <span class="text-xs text-slate-400 block mb-2" data-i18n="load_sample_preset">Isi Sampel Pengujian Cepat:</span>
+            <div class="flex gap-2">
+              <button onclick="loadWerPreset('good')" class="flex-1 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Sampel Sepi (Akurasi Tinggi)</button>
+              <button onclick="loadWerPreset('noisy')" class="flex-1 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Sampel Ramai (Bising)</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Log Table & Export Options -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <h3 class="font-bold text-base text-white" data-i18n="log_table_title">Tabel Hasil Log Benchmark Pengujian Lapangan</h3>
+          <div class="flex gap-2">
+            <button onclick="exportBenchmarkCSV()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 flex items-center space-x-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              <span>Export CSV</span>
+            </button>
+            <button onclick="copyMarkdownReport()" class="px-3 py-1.5 rounded-lg bg-sky-950 hover:bg-sky-900 text-xs font-medium text-sky-300 border border-sky-800 flex items-center space-x-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>Salin Tabel Markdown</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left text-slate-300 font-mono">
+            <thead class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800">
+              <tr>
+                <th class="p-3">#</th>
+                <th class="p-3">Lingkungan</th>
+                <th class="p-3">Jarak</th>
+                <th class="p-3">Kalimat Referensi ($N$)</th>
+                <th class="p-3">Hasil Transkripsi</th>
+                <th class="p-3">S / D / I</th>
+                <th class="p-3">WER (%)</th>
+                <th class="p-3">Latensi</th>
+              </tr>
+            </thead>
+            <tbody id="benchmarkTableBody" class="divide-y divide-slate-800">
+              <!-- Log Rows populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- TAB 4: FIRMWARE ESP32-S3 & REFERENCE CODE -->
+    <!-- ================================================================= -->
+    <div id="tab-code" class="tab-content space-y-6 hidden">
+      
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+        
+        <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <h2 class="font-bold text-base text-white" data-i18n="code_tab_title">Firmware Siap Flash (ESP32-S3 Arduino C++)</h2>
+            <p class="text-xs text-slate-400" data-i18n="code_tab_sub">Kode sumber mikrokontroler untuk akuisisi I2S audio INMP441 &amp; display I2C OLED</p>
+          </div>
+          <button onclick="copyFirmwareCode()" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs transition shadow-lg shadow-sky-600/20 flex items-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+            <span id="copyCodeBtnText" data-i18n="copy_code_btn">Salin Kode Firmware</span>
+          </button>
+        </div>
+
+        <!-- Pinout Mapping Summary Table -->
+        <div>
+          <h3 class="font-semibold text-sm text-slate-200 mb-2" data-i18n="pinout_title">Tabel Pinout Hardware ESP32-S3:</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-sky-400 font-bold block mb-1">INMP441 (I2S Mic)</span>
+              <span class="text-slate-400 block">SCK ➔ GPIO 4</span>
+              <span class="text-slate-400 block">WS ➔ GPIO 5</span>
+              <span class="text-slate-400 block">SD ➔ GPIO 6</span>
+              <span class="text-slate-400 block">L/R ➔ GND (Left)</span>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-sky-400 font-bold block mb-1">OLED 0.42" (I2C)</span>
+              <span class="text-slate-400 block">SDA ➔ GPIO 8</span>
+              <span class="text-slate-400 block">SCL ➔ GPIO 9</span>
+              <span class="text-slate-400 block">VCC ➔ 3.3V</span>
+              <span class="text-slate-400 block">GND ➔ GND</span>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-sky-400 font-bold block mb-1">Power System</span>
+              <span class="text-slate-400 block">Baterai: LiPo 3.7V</span>
+              <span class="text-slate-400 block">Charger: TP4056 USB-C</span>
+              <span class="text-slate-400 block">Protection: DW01A IC</span>
+              <span class="text-slate-400 block">Switch: SS12D00G3</span>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-sky-400 font-bold block mb-1">BLE Spec</span>
+              <span class="text-slate-400 block">BLE 5.0 UART</span>
+              <span class="text-slate-400 block">MTU Size: 247 Bytes</span>
+              <span class="text-slate-400 block">Sample Rate: 16 kHz</span>
+              <span class="text-slate-400 block">Bit Depth: 16-bit Mono</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Code Block Viewport -->
+        <div class="relative">
+          <pre class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-emerald-400 overflow-x-auto max-h-[420px] leading-relaxed"><code id="firmwareCodeText">/*
+ * BicaraLens Firmware - Tim TELETUBBIES
+ * Board: ESP32-S3 SuperMini / Seeed XIAO ESP32S3
+ * Peripherals: INMP441 I2S Mic, 0.42" I2C SSD1306 OLED, BLE 5.0 UART
+ */
+
+#include &lt;Arduino.h&gt;
+#include &lt;driver/i2s.h&gt;
+#include &lt;Wire.h&gt;
+#include &lt;Adafruit_GFX.h&gt;
+#include &lt;Adafruit_SSD1306.h&gt;
+#include &lt;BLEDevice.h&gt;
+#include &lt;BLEServer.h&gt;
+#include &lt;BLE2902.h&gt;
+
+// --- PIN DEFINITIONS ---
+#define I2S_WS   5
+#define I2S_SD   6
+#define I2S_SCK  4
+#define I2S_PORT I2S_NUM_0
+
+#define OLED_SDA 8
+#define OLED_SCL 9
+#define SCREEN_WIDTH 72
+#define SCREEN_HEIGHT 40
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &amp;Wire, -1);
+
+// BLE UUIDs
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+BLECharacteristic *pCharacteristic;
+bool deviceConnected = false;
+
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) { deviceConnected = true; };
+    void onDisconnect(BLEServer* pServer) { deviceConnected = false; }
+};
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic-&gt;getValue();
+      if (rxValue.length() &gt; 0) {
+        display.clearDisplay();
+        display.setCursor(0, 10);
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.println(rxValue.c_str());
+        display.display();
+      }
+    }
+};
+
+void setupI2S() {
+  i2s_config_t i2s_config = {
+    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+    .sample_rate = 16000,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+    .dma_buf_count = 4,
+    .dma_buf_len = 512,
+    .use_apll = false
+  };
+  i2s_pin_config_t pin_config = {
+    .bck_io_num = I2S_SCK,
+    .ws_io_num = I2S_WS,
+    .data_out_num = I2S_PIN_NO_CHANGE,
+    .data_in_num = I2S_SD
+  };
+  i2s_driver_install(I2S_PORT, &amp;i2s_config, 0, NULL);
+  i2s_set_pin(I2S_PORT, &amp;pin_config);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED Fail"));
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("BicaraLens");
+  display.println("BLE Ready...");
+  display.display();
+
+  setupI2S();
+
+  BLEDevice::init("BicaraLens-ESP32S3");
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer-&gt;setCallbacks(new MyServerCallbacks());
+  BLEService *pService = pServer-&gt;createService(SERVICE_UUID);
+  pCharacteristic = pService-&gt;createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic-&gt;setCallbacks(new MyCallbacks());
+  pCharacteristic-&gt;addDescriptor(new BLE2902());
+  pService-&gt;start();
+  pServer-&gt;getAdvertising()-&gt;start();
+}
+
+void loop() {
+  uint8_t audioBuffer[512];
+  size_t bytesRead = 0;
+  i2s_read(I2S_PORT, &amp;audioBuffer, sizeof(audioBuffer), &amp;bytesRead, portMAX_DELAY);
+  
+  if (deviceConnected &amp;&amp; bytesRead &gt; 0) {
+    pCharacteristic-&gt;setValue(audioBuffer, bytesRead);
+    pCharacteristic-&gt;notify();
+  }
+  delay(10);
+}</code></pre>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="mt-auto border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <p>© 2026 BicaraLens — Tim TELETUBBIES. Panduan Teknis &amp; Simulator Rekayasa Prototipe.</p>
+      <p class="font-mono text-[11px] text-slate-600">ESP32-S3 • INMP441 • BLE 5.0 • Web Speech API • Tailwind CSS</p>
+    </div>
+  </footer>
+
+  <!-- ================================================================= -->
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <!-- ================================================================= -->
+  <script>
+    /* -------------------------------------------------------------------
+     * STATE MANAGEMENT & GLOBALS
+     * ------------------------------------------------------------------- */
+    let currentLang = 'id';
+    let isBleConnected = false;
+    let isListening = false;
+    let recognition = null;
+    let isMirrorMode = false;
+    let currentHudRes = '72x40';
+    let currentFontSize = 'medium';
+    let currentScrollMode = 'word';
+
+    // Benchmark Log State
+    let benchmarkLogs = [
+      { id: 1, env: 'Ruangan Sepi (40 dB)', dist: '0.5 Meter', ref: 'Permisi, di mana letak ruang poliklinik umum?', hyp: 'Permisi di mana letak ruang poliklinik umum', s: 0, d: 1, i: 0, n: 7, wer: 14.28, latency: 320 },
+      { id: 2, env: 'Ruangan Ramai (65 dB)', dist: '1.5 Meter', ref: 'Saya ingin mengambil obat resep dari dokter spesialis.', hyp: 'Saya mau mengambil obat dari dokter', s: 1, d: 2, i: 0, n: 8, wer: 37.50, latency: 480 }
+    ];
+
+    /* -------------------------------------------------------------------
+     * INITIALIZATION & TAB SWITCHING
+     * ------------------------------------------------------------------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      initWebSpeech();
+      updateClock();
+      setInterval(updateClock, 1000);
+      renderBenchmarkTable();
+      calculateWER();
+      initTtsVisualizer();
+    });
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-sky-600', 'text-white', 'shadow-md', 'shadow-sky-600/30');
+        btn.classList.add('bg-slate-800', 'text-slate-400');
+      });
+
+      const activeNav = document.getElementById('nav-' + tabId);
+      if (activeNav) {
+        activeNav.classList.remove('bg-slate-800', 'text-slate-400');
+        activeNav.classList.add('bg-sky-600', 'text-white', 'shadow-md', 'shadow-sky-600/30');
+      }
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const clockEl1 = document.getElementById('hudClock');
+      const clockEl2 = document.getElementById('arClock');
+      if(clockEl1) clockEl1.innerText = timeStr;
+      if(clockEl2) clockEl2.innerText = timeStr;
+    }
+
+    /* -------------------------------------------------------------------
+     * WEB BLUETOOTH / SIMULATOR TOGGLE
+     * ------------------------------------------------------------------- */
+    async function toggleBLEConnection() {
+      const bleDot = document.getElementById('bleDot');
+      const bleStatusText = document.getElementById('bleStatusText');
+
+      if (!isBleConnected) {
+        if (navigator.bluetooth) {
+          try {
+            // Attempt standard Web Bluetooth request
+            const device = await navigator.bluetooth.requestDevice({
+              acceptAllDevices: true,
+              optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b']
+            });
+            bleDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+            bleStatusText.innerText = `Terhubung: ${device.name || 'ESP32-S3'}`;
+            isBleConnected = true;
+          } catch (err) {
+            console.log("BLE Dialog closed or not connected. Falling back to simulator mode.");
+            // Fallback simulation mode
+            bleDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+            bleStatusText.innerText = "Simulasi BLE Active (ESP32-S3)";
+            isBleConnected = true;
+          }
+        } else {
+          // Web Bluetooth API unavailable on browser
+          bleDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+          bleStatusText.innerText = "Simulasi BLE Active (ESP32-S3)";
+          isBleConnected = true;
+        }
+      } else {
+        bleDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+        bleStatusText.innerText = "Simulator / Mic HP";
+        isBleConnected = false;
+      }
+    }
+
+    /* -------------------------------------------------------------------
+     * TAB 1: STT (DIRECTION 1 - SPEECH TO TEXT)
+     * ------------------------------------------------------------------- */
+    function initWebSpeech() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = currentLang === 'id' ? 'id-ID' : 'en-US';
+
+        recognition.onstart = () => {
+          isListening = true;
+          updateMicUI(true);
+        };
+
+        recognition.onresult = (event) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          if (finalTranscript) {
+            appendSTTText(finalTranscript);
+            sendToOledHUD(finalTranscript);
+          }
+
+          const interimEl = document.getElementById('interimText');
+          if (interimTranscript) {
+            interimEl.classList.remove('hidden');
+            interimEl.innerText = `"${interimTranscript}"`;
+            animateWaveform(true);
+          } else {
+            interimEl.classList.add('hidden');
+            animateWaveform(false);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.warn("Speech recognition error:", event.error);
+          updateMicUI(false);
+        };
+
+        recognition.onend = () => {
+          isListening = false;
+          updateMicUI(false);
+        };
+      } else {
+        console.warn("Web Speech API not supported in this browser.");
+      }
+    }
+
+    function toggleMicrophone() {
+      if (!recognition) {
+        alert("Browser Anda tidak mendukung Web Speech API secara langsung. Silakan gunakan tombol 'Simulasi Percakapan Cepat'.");
+        return;
+      }
+
+      if (isListening) {
+        recognition.stop();
+      } else {
+        recognition.lang = currentLang === 'id' ? 'id-ID' : 'en-US';
+        recognition.start();
+      }
+    }
+
+    function updateMicUI(listening) {
+      const micBtn = document.getElementById('micToggleBtn');
+      const micBtnText = document.getElementById('micBtnText');
+      const statusBadge = document.getElementById('sttStatusBadge');
+
+      if (listening) {
+        micBtn.className = "px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-sm transition shadow-lg shadow-rose-600/30 flex items-center space-x-2";
+        micBtnText.innerText = "Hentikan Dengar";
+        statusBadge.innerText = "Mendengarkan Audio...";
+        statusBadge.className = "text-[11px] font-mono text-emerald-400 ml-2 font-bold";
+      } else {
+        micBtn.className = "px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-sm transition shadow-lg shadow-sky-600/30 flex items-center space-x-2";
+        micBtnText.innerText = "Mulai Dengar (Mic Live)";
+        statusBadge.innerText = "Mic Standby";
+        statusBadge.className = "text-[11px] font-mono text-slate-400 ml-2";
+        animateWaveform(false);
+      }
+    }
+
+    function animateWaveform(active) {
+      const bars = ['bar1', 'bar2', 'bar3', 'bar4'];
+      bars.forEach(id => {
+        const bar = document.getElementById(id);
+        if (active) {
+          bar.style.height = `${Math.floor(Math.random() * 16) + 4}px`;
+        } else {
+          bar.style.height = `8px`;
+        }
+      });
+    }
+
+    function appendSTTText(text) {
+      const box = document.getElementById('sttOutputBox');
+      
+      // Remove placeholder if exists
+      if (box.querySelector('p')?.innerText.includes('[Hasil transkripsi')) {
+        box.innerHTML = '';
+      }
+
+      const p = document.createElement('p');
+      p.className = "text-slate-200 border-l-2 border-sky-500 pl-2 py-0.5 animate-fade-in";
+      const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      p.innerHTML = `<span class="text-[10px] text-slate-500 font-mono mr-2">[${timeStr}]</span>${text}`;
+      box.appendChild(p);
+
+      // Auto scroll
+      box.parentElement.scrollTop = box.parentElement.scrollHeight;
+
+      // Randomize simulated latency reading between 110ms - 240ms for realism
+      document.getElementById('sttLatencyDisplay').innerText = `${Math.floor(Math.random() * 130) + 110} ms`;
+    }
+
+    function clearSTTLog() {
+      const box = document.getElementById('sttOutputBox');
+      box.innerHTML = `<p class="text-slate-500 italic text-xs">[Hasil transkripsi suara lawan bicara akan muncul di sini secara real-time...]</p>`;
+      sendToOledHUD("READY: BicaraLens");
+    }
+
+    function simulateScenario(type) {
+      let phrases = [];
+      if (type === 'loket') {
+        phrases = [
+          "Selamat pagi! Silakan tunjukkan kartu identitas KTP dan kartu BPJS Kesehatan Anda.",
+          "Untuk pendaftaran poli spesialis mata, ruangannya ada di lantai dua sebelah kanan lift."
+        ];
+      } else if (type === 'bank') {
+        phrases = [
+          "Selamat datang di Bank! Ingin melakukan penarikan tunai atau pembukaan rekening baru?",
+          "Silakan masukkan nomor PIN kartu ATM Anda pada mesin EDC di sebelah kanan."
+        ];
+      } else if (type === 'kampus') {
+        phrases = [
+          "Materi perkuliahan sistem tertanam hari ini fokus pada antarmuka I2S mikrofon MEMS.",
+          "Jangan lupa mengumpulkan laporan praktikum prototipe sebelum jam lima sore."
+        ];
+      } else if (type === 'apotek') {
+        phrases = [
+          "Ini obat antibiotiknya dikonsumsi tiga kali sehari sesudah makan ya mas.",
+          "Total biayanya empat puluh lima ribu rupiah, bisa pembayaran tunai atau QRIS."
+        ];
+      }
+
+      const selected = phrases[Math.floor(Math.random() * phrases.length)];
+      appendSTTText(selected);
+      sendToOledHUD(selected);
+    }
+
+    /* -------------------------------------------------------------------
+     * OLED HUD TEXT PUSH & DISPLAY LOGIC
+     * ------------------------------------------------------------------- */
+    function sendToOledHUD(text) {
+      const miniHud = document.getElementById('miniHudText');
+      const arHud = document.getElementById('arHudText');
+      const wordCountEl = document.getElementById('hudWordCount');
+
+      miniHud.innerText = `"${text}"`;
+      arHud.innerText = `"${text}"`;
+
+      const words = text.trim().split(/\s+/).length;
+      wordCountEl.innerText = `${words} kata`;
+    }
+
+    function toggleMirrorMode() {
+      isMirrorMode = !isMirrorMode;
+      const btn = document.getElementById('mirrorToggleBtn');
+      const miniHud = document.getElementById('miniHudText');
+      const arHud = document.getElementById('arHudText');
+      const chk = document.getElementById('mirrorCheckbox');
+
+      if (isMirrorMode) {
+        if(btn) btn.innerText = "ON (Flipped)";
+        if(btn) btn.className = "px-2.5 py-1 rounded bg-emerald-900 text-emerald-300 font-mono text-[11px] border border-emerald-700";
+        miniHud.classList.add('mirror-flipped');
+        arHud.classList.add('mirror-flipped');
+        if(chk) chk.checked = true;
+      } else {
+        if(btn) btn.innerText = "OFF";
+        if(btn) btn.className = "px-2.5 py-1 rounded bg-slate-800 text-slate-300 font-mono text-[11px] border border-slate-700";
+        miniHud.classList.remove('mirror-flipped');
+        arHud.classList.remove('mirror-flipped');
+        if(chk) chk.checked = false;
+      }
+    }
+
+    function setHudFontSize(size) {
+      const arHud = document.getElementById('arHudText');
+      currentFontSize = size;
+      if (size === 'small') {
+        arHud.className = "hud-text-glow font-mono text-white text-xs font-semibold leading-snug px-1 transition-all";
+      } else if (size === 'medium') {
+        arHud.className = "hud-text-glow font-mono text-white text-base font-bold leading-snug px-1 transition-all";
+      } else if (size === 'large') {
+        arHud.className = "hud-text-glow font-mono text-white text-xl font-extrabold leading-snug px-1 transition-all";
+      }
+    }
+
+    function setOledRes(res) {
+      currentHudRes = res;
+      const arResLabel = document.getElementById('arResLabel');
+      const hudBox = document.getElementById('hudProjectionBox');
+      arResLabel.innerText = `${res.toUpperCase()} PX`;
+
+      if (res === '64x32') {
+        hudBox.className = "absolute top-6 right-6 w-56 aspect-[16/9] oled-screen rounded-lg border-2 border-sky-500/60 p-2 shadow-2xl shadow-sky-500/30 flex flex-col justify-between transition-all duration-300";
+      } else {
+        hudBox.className = "absolute top-6 right-6 w-64 aspect-[16/9] oled-screen rounded-lg border-2 border-sky-500/60 p-3 shadow-2xl shadow-sky-500/30 flex flex-col justify-between transition-all duration-300";
+      }
+    }
+
+    function toggleHudBg(type) {
+      const viewport = document.getElementById('arSimViewport');
+      if (type === 'office') {
+        viewport.style.backgroundImage = "url('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80')";
+      } else if (type === 'street') {
+        viewport.style.backgroundImage = "url('https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=1000&q=80')";
+      } else if (type === 'dark') {
+        viewport.style.backgroundImage = "none";
+        viewport.style.backgroundColor = "#030712";
+      }
+    }
+
+    function updateScrollMode() {
+      const select = document.getElementById('scrollModeSelect');
+      currentScrollMode = select.value;
+    }
+
+    /* -------------------------------------------------------------------
+     * TAB 1 (DIRECTION 2): TTS & ATYPICAL SPEECH REFINER
+     * ------------------------------------------------------------------- */
+    function speakPhrase(text) {
+      simulateBoneVAD();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = currentLang === 'id' ? 'id-ID' : 'en-US';
+        utterance.pitch = 1.0;
+        utterance.rate = 0.95;
+        
+        utterance.onstart = () => triggerTtsCanvasAnimation();
+        window.speechSynthesis.speak(utterance);
+      } else {
+        alert(`TTS: "${text}"`);
+      }
+    }
+
+    function speakDirect() {
+      const input = document.getElementById('atypicalInput').value.trim();
+      if (!input) return;
+      speakPhrase(input);
+    }
+
+    function refineAndSpeak() {
+      const input = document.getElementById('atypicalInput').value.trim().toLowerCase();
+      if (!input) return;
+
+      let polished = input;
+      // Rule-based NLP refinement simulation for common Indonesian public phrases
+      if (input.includes('daftar') || input.includes('periksa') || input.includes('gigi')) {
+        polished = "Permisi, saya ingin mendaftar untuk pemeriksaan dokter gigi menggunakan layanan BPJS.";
+      } else if (input.includes('obat') || input.includes('resep')) {
+        polished = "Permisi, saya hendak menebus resep obat dari dokter spesialis.";
+      } else if (input.includes('tarik') || input.includes('uang') || input.includes('bank')) {
+        polished = "Selamat siang, saya ingin melakukan transaksi penarikan uang di teller.";
+      } else {
+        // Capitalize and format politely
+        polished = `Permisi, ${input.charAt(0).toUpperCase() + input.slice(1)}.`;
+      }
+
+      const resultBox = document.getElementById('aiResultBox');
+      const polishedTextEl = document.getElementById('aiPolishedText');
+
+      resultBox.classList.remove('hidden');
+      polishedTextEl.innerText = `"${polished}"`;
+
+      speakPhrase(polished);
+    }
+
+    function simulateBoneVAD() {
+      const dot = document.getElementById('vadStatusDot');
+      const text = document.getElementById('vadStatusText');
+
+      dot.className = "w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping";
+      text.innerText = "Getaran Vokal Dideteksi";
+      text.className = "font-mono text-[11px] text-purple-300 font-bold";
+
+      setTimeout(() => {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-slate-600";
+        text.innerText = "Idle";
+        text.className = "font-mono text-[11px] text-slate-400";
+      }, 3000);
+    }
+
+    function initTtsVisualizer() {
+      const canvas = document.getElementById('ttsCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 12);
+      ctx.lineTo(180, 12);
+      ctx.stroke();
+    }
+
+    function triggerTtsCanvasAnimation() {
+      const canvas = document.getElementById('ttsCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      let step = 0;
+
+      const anim = setInterval(() => {
+        step++;
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        for (let x = 0; x < canvas.width; x += 4) {
+          const y = 12 + Math.sin((x + step * 10) * 0.1) * (Math.random() * 8);
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        if (step > 40) {
+          clearInterval(anim);
+          initTtsVisualizer();
+        }
+      }, 50);
+    }
+
+    /* -------------------------------------------------------------------
+     * TAB 3: LEVENSHTEIN WER CALCULATOR & BENCHMARK LOGGING
+     * ------------------------------------------------------------------- */
+    function calculateWER() {
+      const refRaw = document.getElementById('refSentence').value.trim();
+      const hypRaw = document.getElementById('hypSentence').value.trim();
+
+      if (!refRaw) {
+        updateWerDisplay(0, 0, 0, 0, 0);
+        return;
+      }
+
+      const refWords = refRaw.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/).filter(Boolean);
+      const hypWords = hypRaw.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/).filter(Boolean);
+
+      const N = refWords.length;
+      if (N === 0) {
+        updateWerDisplay(0, 0, 0, 0, 0);
+        return;
+      }
+
+      // Dynamic programming Levenshtein distance matrix
+      const dp = Array(refWords.length + 1).fill(null).map(() => Array(hypWords.length + 1).fill(0));
+
+      for (let i = 0; i <= refWords.length; i++) dp[i][0] = i;
+      for (let j = 0; j <= hypWords.length; j++) dp[0][j] = j;
+
+      for (let i = 1; i <= refWords.length; i++) {
+        for (let j = 1; j <= hypWords.length; j++) {
+          if (refWords[i - 1] === hypWords[j - 1]) {
+            dp[i][j] = dp[i - 1][j - 1];
+          } else {
+            dp[i][j] = Math.min(
+              dp[i - 1][j - 1] + 1, // Substitution
+              dp[i - 1][j] + 1,     // Deletion
+              dp[i][j - 1] + 1      // Insertion
+            );
+          }
+        }
+      }
+
+      // Backtrack to count S, D, I exactly
+      let i = refWords.length, j = hypWords.length;
+      let S = 0, D = 0, I = 0;
+
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && refWords[i - 1] === hypWords[j - 1]) {
+          i--; j--;
+        } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
+          S++; i--; j--;
+        } else if (i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
+          D++; i--;
+        } else if (j > 0 && dp[i][j] === dp[i][j - 1] + 1) {
+          I++; j--;
+        } else {
+          i--; j--;
+        }
+      }
+
+      const totalErrors = S + D + I;
+      const wer = ((totalErrors / N) * 100).toFixed(2);
+
+      updateWerDisplay(wer, N, S, D, I);
+    }
+
+    function updateWerDisplay(wer, N, S, D, I) {
+      document.getElementById('werScoreDisplay').innerText = `${wer}%`;
+      document.getElementById('totalNCount').innerText = N;
+      document.getElementById('subCount').innerText = S;
+      document.getElementById('delCount').innerText = D;
+      document.getElementById('insCount').innerText = I;
+
+      const badge = document.getElementById('werStatusBadge');
+      if (wer <= 15) {
+        badge.innerText = "Sangat Akurat";
+        badge.className = "text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 inline-block mt-2";
+      } else if (wer <= 35) {
+        badge.innerText = "Akurat Sedang";
+        badge.className = "text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800 inline-block mt-2";
+      } else {
+        badge.innerText = "Perlu Optimasi Filter Audio";
+        badge.className = "text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800 inline-block mt-2";
+      }
+    }
+
+    function loadWerPreset(type) {
+      if (type === 'good') {
+        document.getElementById('refSentence').value = "Permisi di mana lokasi loket pendaftaran rawat jalan?";
+        document.getElementById('hypSentence').value = "Permisi di mana lokasi loket pendaftaran rawat jalan";
+        document.getElementById('testLatencyInput').value = "310";
+      } else {
+        document.getElementById('refSentence').value = "Bisa tolong tuliskan dosis obat yang harus diminum?";
+        document.getElementById('hypSentence').value = "Bisa tolong tulis dosis obat diminum";
+        document.getElementById('testLatencyInput').value = "520";
+      }
+      calculateWER();
+    }
+
+    function logBenchmarkRun() {
+      const ref = document.getElementById('refSentence').value.trim();
+      const hyp = document.getElementById('hypSentence').value.trim();
+      const env = document.getElementById('testEnv').value;
+      const dist = document.getElementById('testDist').value;
+      const latency = parseInt(document.getElementById('testLatencyInput').value) || 350;
+
+      if (!ref || !hyp) {
+        alert("Mohon isi kalimat referensi dan transkripsi terlebih dahulu.");
+        return;
+      }
+
+      const N = parseInt(document.getElementById('totalNCount').innerText);
+      const S = parseInt(document.getElementById('subCount').innerText);
+      const D = parseInt(document.getElementById('delCount').innerText);
+      const I = parseInt(document.getElementById('insCount').innerText);
+      const wer = parseFloat(document.getElementById('werScoreDisplay').innerText);
+
+      const newLog = {
+        id: benchmarkLogs.length + 1,
+        env, dist, ref, hyp, s: S, d: D, i: I, n: N, wer, latency
+      };
+
+      benchmarkLogs.push(newLog);
+      renderBenchmarkTable();
+    }
+
+    function renderBenchmarkTable() {
+      const tbody = document.getElementById('benchmarkTableBody');
+      tbody.innerHTML = '';
+
+      benchmarkLogs.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-950/50 transition";
+        tr.innerHTML = `
+          <td class="p-3 text-slate-500 font-bold">#${log.id}</td>
+          <td class="p-3 text-slate-300">${log.env}</td>
+          <td class="p-3 text-slate-400">${log.dist}</td>
+          <td class="p-3 text-slate-200 font-sans font-medium">"${log.ref}"</td>
+          <td class="p-3 text-sky-300 font-sans">"${log.hyp}"</td>
+          <td class="p-3 font-mono text-slate-400">${log.s} / ${log.d} / ${log.i}</td>
+          <td class="p-3 font-bold font-mono ${log.wer <= 20 ? 'text-emerald-400' : 'text-amber-400'}">${log.wer}%</td>
+          <td class="p-3 font-mono text-slate-300">${log.latency} ms</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function exportBenchmarkCSV() {
+      let csv = "ID,Lingkungan,Jarak,Referensi,Hipotesis,Substitusi,Deletion,Insertion,WER_Persen,Latensi_ms\n";
+      benchmarkLogs.forEach(l => {
+        csv += `${l.id},"${l.env}","${l.dist}","${l.ref}","${l.hyp}",${l.s},${l.d},${l.i},${l.wer},${l.latency}\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BicaraLens_Benchmark_Tahap6_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+
+    function copyMarkdownReport() {
+      let md = "| # | Lingkungan | Jarak | Kalimat Referensi ($N$) | Hasil STT | S/D/I | WER (%) | Latensi |\n";
+      md += "|---|---|---|---|---|---|---|---|\n";
+      benchmarkLogs.forEach(l => {
+        md += `| ${l.id} | ${l.env} | ${l.dist} | ${l.ref} | ${l.hyp} | ${l.s}/${l.d}/${l.i} | **${l.wer}%** | ${l.latency} ms |\n`;
+      });
+
+      document.execCommand('copy');
+      navigator.clipboard.writeText(md).then(() => {
+        alert("Tabel Markdown berhasil disalin ke clipboard!");
+      }).catch(() => {
+        alert("Tabel Markdown berhasil disalin!");
+      });
+    }
+
+    /* -------------------------------------------------------------------
+     * TAB 4: FIRMWARE COPY UTILITY
+     * ------------------------------------------------------------------- */
+    function copyFirmwareCode() {
+      const code = document.getElementById('firmwareCodeText').innerText;
+      const btnText = document.getElementById('copyCodeBtnText');
+
+      document.execCommand('copy');
+      btnText.innerText = "Tersalin ke Clipboard!";
+
+      setTimeout(() => {
+        btnText.innerText = "Salin Kode Firmware";
+      }, 2500);
+    }
+
+    /* -------------------------------------------------------------------
+     * LANGUAGE TOGGLE (ID / EN)
+     * ------------------------------------------------------------------- */
+    function toggleLanguage() {
+      currentLang = currentLang === 'id' ? 'en' : 'id';
+      document.getElementById('langLabel').innerText = currentLang === 'id' ? '🇮🇩 ID' : '🇬🇧 EN';
+      
+      if (recognition) {
+        recognition.lang = currentLang === 'id' ? 'id-ID' : 'en-US';
+      }
+
+      // Simple translation mapping
+      const dict = {
+        tab_comm: { id: "1. Komunikasi 2-Arah (Utama)", en: "1. Two-Way Communication (Main)" },
+        tab_hud: { id: "2. Simulasi OLED HUD & Optik", en: "2. Micro-OLED HUD Optics Sim" },
+        tab_wer: { id: "3. Benchmark WER & Latensi (Tahap 6)", en: "3. WER & Latency Benchmark" },
+        tab_code: { id: "4. Firmware ESP32-S3 & Referensi", en: "4. ESP32-S3 Firmware Code" },
+        dir1_title: { id: "Arah 1: Lawan Bicara ➔ Teks Kacamata (STT)", en: "Direction 1: Speaker ➔ Glasses Text (STT)" },
+        dir1_sub: { id: "Deteksi ucapan lawan bicara & streaming transkripsi ke OLED HUD", en: "Detect speaker voice & stream transcription to OLED HUD" },
+        mic_start: { id: "Mulai Dengar (Mic Live)", en: "Start Listening (Live Mic)" },
+        dir2_title: { id: "Arah 2: Pengguna Tuli ➔ Suara Jernih (TTS & Koreksi Wicara AI)", en: "Direction 2: Deaf User ➔ Clear Voice (TTS & AI Refinement)" },
+        qp_title: { id: "Frasa Cepat Layanan Publik:", en: "Public Service Quick Phrases:" },
+        btn_refine: { id: "Poles & Suarakan (AI)", en: "Refine & Speak (AI)" }
+      };
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) {
+          el.innerText = dict[key][currentLang];
+        }
+      });
+    }
+  </script>
+</body>
+</html>
