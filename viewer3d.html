@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BicaraLens 3D</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #030712; color: #e5e7eb;
+    font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+  [hidden] { display: none !important; }
+  canvas { display: block; }
+  #bar { position: fixed; top: 16px; left: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { background: #0c4a6e; color: #e0f2fe; border: 1px solid #0284c7; border-radius: 8px;
+    padding: 8px 14px; font: inherit; cursor: pointer; }
+  button:hover { background: #0369a1; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+  .panel { position: fixed; left: 16px; bottom: 16px; max-width: 340px; padding: 14px 16px;
+    background: rgba(15, 23, 42, .92); border: 1px solid #1e3a5f; border-radius: 10px; }
+  .panel h2 { margin: 0 0 6px; font-size: 16px; }
+  .panel p { margin: 0; font-size: 14px; line-height: 1.5; color: #cbd5e1; }
+  #f { display: flex; gap: 6px; margin-top: 10px; }
+  input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid #1e3a5f;
+    background: #0b1220; color: #e5e7eb; font: inherit; }
+  #status { position: fixed; right: 16px; top: 16px; font-size: 13px; color: #94a3b8; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="bar">
+  <button id="btnExplode">Tampilan terurai</button>
+  <button id="btnPov">Pandangan pengguna Tuli</button>
+  <button id="btnReset">Reset kamera</button>
+</div>
+<div id="status"></div>
+<div id="info" class="panel"><h2>Klik sebuah komponen</h2><p>Putar dengan menyeret, zoom dengan scroll.</p></div>
+<div id="pov" class="panel" hidden>
+  <h2>Pandangan pengguna Tuli</h2>
+  <p>Lawan bicara tidak terdengar. Ucapannya muncul sebagai teks di layar OLED 72×40 px, sekitar 12 karakter × 4 baris, di sudut lensa.</p>
+  <form id="f"><input id="txt" maxlength="80" placeholder="Ketik ucapan lawan bicara" aria-label="Ucapan lawan bicara"><button>Tampilkan</button></form>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ===== 1. Penjelasan komponen. Kunci = potongan nama objek (huruf kecil). Sesuaikan teksnya. =====
+const INFO = {
+  rangka:   ['Rangka', 'Bingkai dan tangkai kacamata. Menopang semua komponen.'],
+  lensa:    ['Lensa', 'Lensa bening. Pengguna tetap melihat lawan bicara secara langsung.'],
+  layar:    ['Layar OLED', 'OLED I2C 0,42 inci (72×40 px) atau 0,49 inci (64×32 px), putih kontras tinggi. Menampilkan teks ucapan.'],
+  mikrofon: ['Mikrofon INMP441', 'Modul MEMS I2S, omnidirectional, 24-bit, signal-to-noise tinggi, lebih kebal gangguan kabel daripada mikrofon analog.'],
+  mikrokontroler: ['Mikrokontroler', 'ESP32-S3 SuperMini (22,5×18 mm, dual-core 240 MHz, BLE 5.0) atau Seeed XIAO ESP32S3 (pengisi baterai bawaan, PSRAM 8 MB).'],
+  baterai:  ['Baterai LiPo', '3,7 V, 250–350 mAh, bentuk kotak tipis (kode 402030 atau 502030).'],
+  charger:  ['Charger TP4056', 'Modul Type-C dengan IC proteksi DW01A. Wajib jika memakai ESP32-S3 SuperMini; XIAO ESP32S3 sudah punya pengisi bawaan.'],
+  saklar:   ['Saklar daya', 'Slide switch mini SS12D00G3 sebagai tombol daya.']
+};
+const lookup = (name) => {
+  const n = name.toLowerCase();
+  const key = Object.keys(INFO).find(k => n.includes(k));
+  return key ? INFO[key] : [name || 'Komponen', 'Belum ada penjelasan. Tambahkan di objek INFO.'];
+};
+
+// ===== 2. Scene dasar =====
+const $ = (id) => document.getElementById(id);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030712);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+const HOME = new THREE.Vector3(3.5, 1.8, 5.5);
+const EYE = new THREE.Vector3(0.75, 0, -1.1);
+camera.position.copy(HOME);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(4, 6, 5); scene.add(sun);
+const back = new THREE.DirectionalLight(0xffffff, 1.6); back.position.set(0, 3, -6); scene.add(back);
+
+// ===== 3. Layar OLED: kanvas 72×40 px hitam-putih, dipakai sebagai tekstur =====
+const COLS = 12, ROWS = 4;
+const oled = document.createElement('canvas'); oled.width = 72; oled.height = 40;
+const octx = oled.getContext('2d', { willReadFrequently: true });
+const oledTex = new THREE.CanvasTexture(oled);
+oledTex.magFilter = oledTex.minFilter = THREE.NearestFilter;
+oledTex.colorSpace = THREE.SRGBColorSpace;
+function wrap(text) {
+  const lines = []; let cur = '';
+  for (let w of text.split(' ')) {
+    while (w.length > COLS) { if (cur) { lines.push(cur); cur = ''; } lines.push(w.slice(0, COLS)); w = w.slice(COLS); }
+    if (!cur) cur = w; else if ((cur + ' ' + w).length <= COLS) cur += ' ' + w; else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function drawOled(text) {
+  octx.fillStyle = '#000'; octx.fillRect(0, 0, 72, 40);
+  octx.fillStyle = '#fff'; octx.font = '10px monospace'; octx.textBaseline = 'top';
+  wrap(text).slice(-ROWS).forEach((l, i) => octx.fillText(l, 0, i * 10));
+  const d = octx.getImageData(0, 0, 72, 40);
+  for (let i = 0; i < d.data.length; i += 4) { const v = d.data[i] > 110 ? 255 : 0; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+  octx.putImageData(d, 0, 0); oledTex.needsUpdate = true;
+}
+drawOled('BicaraLens');
+
+// ===== 4. Model contoh dari bentuk sederhana (dipakai jika model.glb belum ada) =====
+function buildPlaceholder() {
+  const g = new THREE.Group();
+  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const add = (name, geo, color, x, y, z, extra = {}) => {
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: .5, ...extra }));
+    m.name = name; m.position.set(x, y, z); g.add(m); return m;
+  };
+  const steel = 0x9ca3af;
+  add('rangka-atas',  box(3.4, .12, .12), 0x1f2937, 0, .45, 0);
+  add('rangka-kiri',  box(.12, .12, 2.2), 0x1f2937, -1.6, .45, -1.1);
+  add('rangka-kanan', box(.12, .12, 2.2), 0x1f2937, 1.6, .45, -1.1);
+  const glass = { transparent: true, opacity: .3 };
+  add('lensa-kiri',  box(1.3, .8, .04), 0x38bdf8, -.75, 0, 0, glass);
+  add('lensa-kanan', box(1.3, .8, .04), 0x38bdf8, .75, 0, 0, glass);
+  // Layar OLED di sisi mata, sisi layarnya (−z) menghadap mata
+  const dark = new THREE.MeshStandardMaterial({ color: 0x111827 });
+  const screen = new THREE.Mesh(box(.3, .167, .03), [dark, dark, dark, dark, dark, new THREE.MeshBasicMaterial({ map: oledTex })]);
+  screen.name = 'layar-oled'; screen.position.set(.45, -.12, -.06); g.add(screen);
+  // Mikrofon INMP441 di sudut depan
+  add('mikrofon-pcb', box(.3, .3, .03), 0x6d28d9, -1.45, .45, .08);
+  add('mikrofon-lubang', new THREE.CylinderGeometry(.04, .04, .035, 20), steel, -1.45, .45, .1).rotation.x = Math.PI / 2;
+  // Sisi kanan: ESP32-S3 + saklar
+  add('mikrokontroler-pcb', box(.05, .44, .55), 0x0f172a, 1.69, .45, -.9);
+  add('mikrokontroler-usb', box(.06, .1, .12), steel, 1.69, .45, -1.2);
+  add('saklar', box(.1, .09, .2), 0xf59e0b, 1.7, .45, -1.95);
+  // Sisi kiri: baterai + TP4056
+  add('baterai', box(.12, .49, .73), 0xdc2626, -1.72, .45, -.9);
+  add('charger-pcb', box(.04, .41, .63), 0x2563eb, -1.68, .45, -1.75);
+  add('charger-usbc', box(.08, .12, .17), steel, -1.7, .45, -2.07);
+  return g;
+}
+let model = buildPlaceholder();
+scene.add(model);
+
+// ===== 5. Daftar komponen + tampilan terurai =====
+let parts = [];
+function setupParts(root) {
+  root.updateMatrixWorld(true);
+  const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
+  parts = [];
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.material = Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone();
+    const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+    const dir = c.sub(center);
+    if (dir.length() < 1e-4) dir.set(0, 1, 0);
+    parts.push({ mesh: o, base: o.getWorldPosition(new THREE.Vector3()), dir: dir.normalize() });
+  });
+}
+setupParts(model);
+let explode = 0, explodeTarget = 0;
+$('btnExplode').onclick = () => { explodeTarget = explodeTarget ? 0 : 1.2; };
+
+// ===== 6. Muat model.glb buatan Anda (dari Blender) =====
+new GLTFLoader().load('model.glb', (gltf) => {
+  scene.remove(model);
+  model = gltf.scene;
+  const box = new THREE.Box3().setFromObject(model);
+  model.scale.setScalar(3.4 / Math.max(...box.getSize(new THREE.Vector3()).toArray()));
+  model.updateMatrixWorld(true);
+  model.position.sub(new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3()));
+  scene.add(model);
+  setupParts(model);
+  // Upaya terbaik: objek bernama "layar" memakai tekstur OLED (butuh UV bidang 0..1)
+  parts.forEach(p => { if (p.mesh.name.toLowerCase().includes('layar')) p.mesh.material = new THREE.MeshBasicMaterial({ map: oledTex }); });
+  $('status').textContent = 'model.glb dimuat';
+}, undefined, () => { $('status').textContent = 'model.glb tidak ditemukan, memakai model contoh'; });
+
+// ===== 7. Dunia untuk pandangan pengguna: lawan bicara sederhana =====
+const world = new THREE.Group(); world.visible = false; scene.add(world);
+const std = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: .8 });
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(40, 20), std(0x1e293b)); wall.position.set(0, 0, 14); wall.rotation.y = Math.PI; world.add(wall);
+const person = new THREE.Group(); person.position.set(.75, 0, 7); world.add(person);
+const head = new THREE.Mesh(new THREE.SphereGeometry(.55, 32, 24), std(0xd9a77f)); head.position.y = .1; person.add(head);
+const torso = new THREE.Mesh(new THREE.CapsuleGeometry(.9, 1.4, 8, 24), std(0x0e7490)); torso.position.y = -1.85; person.add(torso);
+for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(.06, 12, 12), std(0x1f2937)); e.position.set(s * .2, .25, -.5); person.add(e); }
+const mouth = new THREE.Mesh(new THREE.BoxGeometry(.28, .07, .05), std(0x7f1d1d)); mouth.position.set(0, -.12, -.53); person.add(mouth);
+
+// ===== 8. Teks demo di layar OLED =====
+const DEFAULT = ['Halo, apa kabar?', 'Rapat dimulai jam sembilan.', 'Tolong kirim tugasnya hari ini ya.', 'Terima kasih banyak!'];
+let runId = 0, talking = false;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+async function say(text, id) {
+  const words = text.split(' '); talking = true;
+  for (let i = 1; i <= words.length; i++) { if (id !== runId) return; drawOled(words.slice(0, i).join(' ')); await sleep(420); }
+  talking = false; await sleep(2200);
+}
+async function runDemo() {
+  const id = ++runId;
+  while (id === runId) for (const t of DEFAULT) { if (id !== runId) return; await say(t, id); }
+}
+$('f').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('txt').value.trim(); if (!v) return;
+  $('txt').value = '';
+  const id = ++runId;
+  say(v, id).then(() => { if (id === runId) runDemo(); });
+});
+
+// ===== 9. Perpindahan kamera + mode pandangan pengguna =====
+let pov = false, view = null;
+const look = new THREE.Vector3();
+const goTo = (pos, lk, fov) => { view = { pos, lk, fov }; controls.enabled = false; };
+function setPov(on, demo = true) {
+  pov = on; select(null);
+  world.visible = on; $('info').hidden = on; $('pov').hidden = !on; $('btnExplode').disabled = on;
+  $('btnPov').textContent = on ? 'Kembali ke model' : 'Pandangan pengguna Tuli';
+  if (on) { explodeTarget = 0; goTo(EYE, new THREE.Vector3(.75, 0, 10), 70); if (demo) runDemo(); }
+  else { runId++; talking = false; drawOled('BicaraLens'); goTo(HOME, new THREE.Vector3(), 45); }
+}
+$('btnPov').onclick = () => setPov(!pov);
+$('btnReset').onclick = () => (pov ? setPov(false) : goTo(HOME, new THREE.Vector3(), 45));
+
+// Terima teks dari halaman lain (misalnya FILE.html) lewat postMessage
+let talkTimer = 0;
+addEventListener('message', (e) => {
+  const d = e.data;
+  if (e.origin !== location.origin || !d || d.type !== 'bicaralens-caption' || typeof d.text !== 'string') return;
+  runId++;                                 // hentikan demo bawaan
+  if (!pov) setPov(true, false);           // pindah ke pandangan pengguna
+  drawOled(d.text.slice(0, 200));
+  talking = !d.final;
+  clearTimeout(talkTimer); talkTimer = setTimeout(() => { talking = false; }, 1500);
+});
+
+// ===== 10. Klik komponen =====
+const ray = new THREE.Raycaster(), pointer = new THREE.Vector2();
+let selected = null, down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (pov || view || !down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  pointer.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(pointer, camera);
+  const hit = ray.intersectObjects(parts.map(p => p.mesh), false)[0];
+  select(hit ? hit.object : null);
+});
+function glow(mesh, on) {
+  [].concat(mesh.material).forEach(m => {
+    if (!m.emissive) return;
+    m.userData.e ??= m.emissive.getHex();
+    m.emissive.setHex(on ? 0x0369a1 : m.userData.e);
+  });
+}
+function select(mesh) {
+  if (selected) glow(selected, false);
+  selected = mesh;
+  if (mesh) glow(mesh, true);
+  const [title, text] = mesh ? lookup(mesh.name) : ['Klik sebuah komponen', 'Putar dengan menyeret, zoom dengan scroll.'];
+  document.querySelector('#info h2').textContent = title;
+  document.querySelector('#info p').textContent = text;
+}
+
+// ===== 11. Loop animasi =====
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop((t) => {
+  explode += (explodeTarget - explode) * 0.08;
+  for (const p of parts) p.mesh.position.copy(p.mesh.parent.worldToLocal(p.base.clone().addScaledVector(p.dir, explode)));
+  mouth.scale.y = talking ? .5 + Math.abs(Math.sin(t / 110)) * 1.6 : .5;
+  if (view) {
+    camera.position.lerp(view.pos, .07); look.lerp(view.lk, .07);
+    camera.fov += (view.fov - camera.fov) * .07; camera.updateProjectionMatrix();
+    camera.lookAt(look);
+    if (camera.position.distanceTo(view.pos) < .01) { view = null; if (!pov) { controls.target.copy(look); controls.enabled = true; } }
+  } else if (!pov) controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

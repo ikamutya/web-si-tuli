@@ -76,6 +76,7 @@
     }
   </style>
 </head>
+
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
 
   <!-- TOP HEADER / STATUS BAR -->
@@ -1561,5 +1562,45 @@ void loop() {
       });
     }
   </script>
+  <iframe id="kacamata3d" src="viewer3d.html" title="Model 3D BicaraLens"
+        style="width:100%; height:520px; border:0; border-radius:12px;"></iframe>
+<button id="btnMic">Mulai bicara</button>
+
+<script>
+const frame3d = document.getElementById('kacamata3d');
+
+// Kirim teks ke model 3D
+function sendCaption(text, final = true) {
+  frame3d.contentWindow.postMessage(
+    { type: 'bicaralens-caption', text, final }, location.origin);
+}
+
+// Pengenalan suara (Chrome / Edge)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const btnMic = document.getElementById('btnMic');
+if (!SR) {
+  btnMic.disabled = true;
+  btnMic.textContent = 'Browser tidak mendukung suara';
+} else {
+  const rec = new SR();
+  rec.lang = 'id-ID';
+  rec.continuous = true;
+  rec.interimResults = true;
+  let listening = false;
+
+  rec.onresult = (e) => {
+    const r = e.results[e.results.length - 1];
+    sendCaption(r[0].transcript, r.isFinal);
+  };
+  rec.onend = () => { if (listening) rec.start(); };
+  rec.onerror = (e) => { if (e.error === 'not-allowed') listening = false; };
+
+  btnMic.onclick = () => {
+    listening = !listening;
+    btnMic.textContent = listening ? 'Berhenti' : 'Mulai bicara';
+    listening ? rec.start() : rec.stop();
+  };
+}
+</script>
 </body>
 </html>
